@@ -1,0 +1,83 @@
+services:
+  demo-app:
+    image: python:3.12-slim
+    container_name: demo-app
+    working_dir: /app
+    volumes:
+      - ./app:/app
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             python app.py"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
+    networks:
+      - monitoring
+    depends_on:
+      demo-app:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+
+  traffic-generator:
+    image: alpine:3.20
+    container_name: traffic-generator
+    command:
+      - /bin/sh
+      - -c
+      - |
+        sleep 30
+        while true; do
+          wget -qO- http://demo-app:8080/ >/dev/null 2>&1
+          wget -qO- http://demo-app:8080/api/data >/dev/null 2>&1
+          wget -qO- http://demo-app:8080/health >/dev/null 2>&1
+          sleep 2
+        done
+    restart: unless-stopped
+    networks:
+      - monitoring
+    depends_on:
+      demo-app:
+        condition: service_healthy
+
+networks:
+  monitoring:
+    driver: bridge
