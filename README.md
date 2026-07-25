@@ -151,3 +151,4 @@ aws ec2 get-console-output --instance-id (terraform output -raw instance_id)
 
 Look for `Monitoring stack is running on AWS EC2` in `/var/log/user-data.log`.
 # Grafana_demo
+# Grafana_demo
